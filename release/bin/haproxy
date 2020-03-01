@@ -21,8 +21,9 @@ LOCKFILE=../haproxy.lock
 
 if [ -f $CFG ] 
 then
-  echo "Configuration not found"
+  echo "Configuration found"
 else
+  echo "Configuration not found"
   exit 1
 fi
 
