@@ -1,0 +1,142 @@
+#!/bin/sh
+#####################################################################################
+# Description: 
+#   HA-Proxy is a TCP/HTTP reverse proxy for high availability and load balancing.
+# Author: Yogeshwar Mahalle 
+# Version: 2.1.3
+#####################################################################################
+
+BASENAME=haproxy
+echo "Loading $BASENAME ...."
+if [ -L $0 ]; then
+  BASENAME=`find $0 -name $BASENAME -printf %l`
+  BASENAME=`basename $BASENAME`
+fi
+
+
+BIN=./${BASENAME}.mac-catalina
+CFG=../config/haproxy.cfg
+PIDFILE=../haproxy.pid
+LOCKFILE=../haproxy.lock
+
+if [ -f $CFG ] 
+then
+  echo "Configuration not found"
+else
+  exit 1
+fi
+
+start() {
+
+  if [[ -f "$LOCKFILE" ]]; then
+    echo "Already Running. Please stop the running process and then start."
+    return 1
+  fi
+
+  quiet_check
+  if [ $? -ne 0 ]; then
+    echo "Errors found in configuration file, check it with '$BASENAME check'."
+    return 1
+  fi
+
+  echo "Starting $BASENAME: "
+  $BIN -D -f $CFG -p $PIDFILE
+  RETVAL=$?
+  echo
+  [ $RETVAL -eq 0 ] && touch $LOCKFILE
+  return $RETVAL
+}
+
+stop() {
+  echo "Shutting down $BASENAME: "
+
+  while read -r line || [ -n "$line" ]
+  do
+    echo "Stopping process $line"
+    kill $line
+    RETVAL=$?
+    echo "Stopping status $RETVAL"
+  done < "$PIDFILE"
+
+  echo
+  [ $RETVAL -eq 0 ] && rm -f $LOCKFILE
+  [ $RETVAL -eq 0 ] && rm -f $PIDFILE
+  return $RETVAL
+}
+
+restart() {
+  
+  quiet_check
+  if [ $? -ne 0 ]; then
+    echo "Errors found in configuration file, check it with '$BASENAME check'."
+    return 1
+  fi
+  stop
+  start
+}
+
+reload() {
+  if ! [ -s $PIDFILE ]; then
+    return 0
+  fi
+
+  quiet_check
+  if [ $? -ne 0 ]; then
+    echo "Errors found in configuration file, check it with '$BASENAME check'."
+    return 1
+  fi
+  $BIN -D -f $CFG -p $PIDFILE -sf $(cat $PIDFILE)
+}
+
+check() {
+  $BIN -c -q -V -f $CFG
+}
+
+quiet_check() {
+  $BIN -c -q -f $CFG
+}
+
+rhstatus() {
+  pid=`pgrep $BASENAME`
+
+  if [ -z $pid ]
+  then
+    echo "The $BASENAME is not running."
+  else
+    echo "The $BASENAME is running with process id $pid."
+  fi
+}
+
+condrestart() {
+  [ -e $LOCKFILE ] && restart || :
+}
+
+# See how we were called.
+case "$1" in
+  start)
+    start
+    ;;
+  stop)
+    stop
+    ;;
+  restart)
+    restart
+    ;;
+  reload)
+    reload
+    ;;
+  condrestart)
+    condrestart
+    ;;
+  status)
+    rhstatus
+    ;;
+  check)
+    check
+    ;;
+  *)
+    echo $"Usage: $BASENAME {start|stop|restart|reload|condrestart|status|check}"
+    exit 1
+esac
+ 
+exit $?
